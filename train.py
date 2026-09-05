@@ -1,238 +1,252 @@
 import torch
-
 from torch.utils.data import DataLoader
-
-from torch.optim import AdamW # 优化器 调整模型参数
-
-from sklearn.metrics import accuracy_score # 计算准确率
-
-from tqdm import tqdm # 显示训练进度条
-
-import swanlab # 实验记录工具（loss下降曲线 accuracy变化） 方便观察训练效果
-
-
-
+from torch.optim import AdamW
+from tqdm import tqdm
+import swanlab
 from dataset import ToutiaoDataset
-
 from model import BertClassifier
-
 from config import config
 
 
-swanlab.init(
+def train_one_epoch(model,loader,optimizer,loss_fn):
 
-    project="demo1-bert-text-classification",
+    model.train()
 
-    config={
+    total_loss = 0
 
-        "lr":config.lr,
+    for batch in tqdm(loader):
 
-        "batch_size":config.batch_size,
+        ids = batch["input_ids"].to(
+            config.device
+        )
 
-        "epochs":config.epochs
+        mask = batch["attention_mask"].to(
+            config.device
+        )
 
-    }
+        y = batch["labels"].to(
+            config.device
+        )
 
-)
+        optimizer.zero_grad()
 
+        output = model(
+            ids,
+            mask
+        )
 
+        loss = loss_fn(
+            output,
+            y
+        )
 
-train_dataset=ToutiaoDataset(
-    config.train_path
-)
+        loss.backward()
 
+        optimizer.step()
 
-dev_dataset=ToutiaoDataset(
-    config.dev_path
-)
+        total_loss += loss.item()
 
-
-test_dataset=ToutiaoDataset(
-    config.test_path
-)
-
-
-
-train_loader=DataLoader(
-    train_dataset,
-    batch_size=config.batch_size,
-    shuffle=True # 随机打乱训练集数据
-)
-
-
-dev_loader=DataLoader(
-    dev_dataset,
-    batch_size=config.batch_size
-)
+    return total_loss
 
 
-test_loader=DataLoader(
-    test_dataset,
-    batch_size=config.batch_size
-)
+def evaluate(model,loader):
 
+    model.eval()
 
-# .to()是PyTorch的函数 放到GPU计算
-model=BertClassifier().to(
-    config.device
-)
+    correct = 0
 
-# 创建一个AdamW优化器（AdamW是一种算法）
-# 让它负责调整BertClassifier模型内部所有参数 每次调整幅度由学习率控制
-optimizer=AdamW(
-    model.parameters(), # 把模型里面所有需要学习的参数交给优化器管理
-    lr=config.lr
-)
-
-# 交叉熵损失函数
-loss_fn=torch.nn.CrossEntropyLoss()
-
-
-
-def evaluate(loader):
-
-    model.eval() # 切换模型状态为测试
-
-    preds=[] # 保存模型预测结果
-
-    labels=[] # 保存真实答案
-
+    total = 0
 
     with torch.no_grad():
 
         for batch in loader:
 
-            ids=batch["input_ids"].to(
+            ids = batch["input_ids"].to(
                 config.device
             )
 
-            mask=batch["attention_mask"].to(
+            mask = batch["attention_mask"].to(
                 config.device
             )
 
-            y=batch["labels"].to(
+            y = batch["labels"].to(
                 config.device
             )
 
-            out=model(
+            out = model(
                 ids,
                 mask
             )
 
-            pred=torch.argmax(
+            pred = torch.argmax(
                 out,
                 dim=1
             )
 
+            # 统计预测正确的数量
+            correct += (pred == y).sum().item()
 
-            preds.extend(
-                pred.cpu().numpy()
-            )
+            # 统计总样本数量
+            total += y.size(0)
 
-            labels.extend(
-                y.cpu().numpy()
-            )
+    # 计算准确率
+    return correct / total
 
 
-    return accuracy_score(
-        labels,
-        preds
+def main():
+
+    swanlab.init(
+
+        project="demo1-bert-text-classification",
+
+        config={
+
+            "lr": config.lr,
+
+            "batch_size": config.batch_size,
+
+            "epochs": config.epochs
+        }
     )
 
 
-
-# 真正训练开始 循环10次
-for epoch in range(config.epochs):
-
-    # 进入训练模式（PyTorch模型的状态切换）
-    model.train()
-
-    total_loss=0
-
-    for batch in tqdm(train_loader):
-
-        ids=batch["input_ids"].to(
-            config.device
-        )
-
-
-        mask=batch["attention_mask"].to(
-            config.device
-        )
-
-
-        y=batch["labels"].to(
-            config.device
-        )
-
-        # PyTorch默认：梯度会累积
-        # 每次训练前 清空梯度
-        optimizer.zero_grad()
-
-
-
-        output=model(
-            ids,
-            mask
-        )
-
-
-        loss=loss_fn(
-            output,
-            y
-        )
-
-
-        loss.backward()
-
-
-        optimizer.step()
-
-
-
-        total_loss+=loss.item()
-
-
-
-    dev_acc=evaluate(dev_loader)
-
+    # 生成统一的标签映射表
+    label_map = ToutiaoDataset.build_label_map(
+        config.train_path
+    )
 
     print(
-        f"""
-Epoch:{epoch+1}
+        "Label Map:",
+        label_map
+    )
+
+    train_dataset = ToutiaoDataset(
+        config.train_path,
+        label_map
+    )
+
+    dev_dataset = ToutiaoDataset(
+        config.dev_path,
+        label_map
+    )
+
+    test_dataset = ToutiaoDataset(
+        config.test_path,
+        label_map
+    )
+
+    train_loader = DataLoader(
+
+        train_dataset,
+
+        batch_size=config.batch_size,
+
+        shuffle=True,
+
+        collate_fn=train_dataset.collate_fn
+    )
+
+
+    dev_loader = DataLoader(
+
+        dev_dataset,
+
+        batch_size=config.batch_size,
+
+        collate_fn=dev_dataset.collate_fn
+    )
+
+    test_loader = DataLoader(
+
+        test_dataset,
+
+        batch_size=config.batch_size,
+
+        collate_fn=test_dataset.collate_fn
+    )
+
+    model = BertClassifier().to(config.device)
+
+
+    optimizer = AdamW(
+
+        model.parameters(),
+
+        lr=config.lr
+    )
+
+
+    loss_fn = torch.nn.CrossEntropyLoss()
+
+
+    for epoch in range(
+        config.epochs
+    ):
+
+        total_loss = train_one_epoch(
+
+            model,
+
+            train_loader,
+
+            optimizer,
+
+            loss_fn
+        )
+
+
+        dev_acc = evaluate(
+
+            model,
+
+            dev_loader
+        )
+
+
+        print(
+            f"""
+Epoch:{epoch + 1}
 loss:{total_loss:.4f}
 dev_acc:{dev_acc:.4f}
 """
+        )
+
+
+        swanlab.log({
+
+            "loss": total_loss,
+
+            "dev_acc": dev_acc
+
+        })
+
+
+    test_acc = evaluate(
+
+        model,
+
+        test_loader
+    )
+
+
+    print(
+
+        "Test Accuracy:",
+
+        test_acc
     )
 
 
     swanlab.log({
 
-        "loss":total_loss,
-
-        "dev_acc":dev_acc
+        "test_acc": test_acc
 
     })
 
 
+    swanlab.finish()
 
 
-test_acc=evaluate(
-    test_loader
-)
+if __name__ == "__main__":
 
-
-print(
-    "Test Accuracy:",
-    test_acc
-)
-
-
-swanlab.log(
-    {
-        "test_acc":test_acc
-    }
-)
-
-
-swanlab.finish()
+    main()

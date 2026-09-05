@@ -1,0 +1,17 @@
+model_name: bert-base-chinese
+
+train_path: ./data/train_3k.txt
+
+dev_path: ./data/dev_1k.txt
+
+test_path: ./data/test_1k.txt
+
+num_labels: 15
+
+batch_size: 16
+
+epochs: 10
+
+lr: 2.0e-5
+
+max_length: 128

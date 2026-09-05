@@ -1,25 +1,35 @@
-import torch
+import yaml
 
 class Config:
 
-    model_name="bert-base-chinese"
+    def __init__(self, config_path="./config.yaml"):
 
-    train_path="./data/train_3k.txt"
+        with open(
+            config_path,
+            "r",
+            encoding="utf-8"
+        ) as f:
 
-    dev_path="./data/dev_1k.txt"
+            config = yaml.safe_load(f)
 
-    test_path="./data/test_1k.txt"
+        self.model_name = config["model_name"]
 
-    num_labels=15
+        self.train_path = config["train_path"]
 
-    batch_size=16
+        self.dev_path = config["dev_path"]
 
-    epochs=10
+        self.test_path = config["test_path"]
 
-    lr=2e-5
+        self.num_labels = config["num_labels"]
 
-    max_length=128 # 输入文本经过Tokenizer分词后 最多保留128个token（词元）
+        self.batch_size = config["batch_size"]
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.epochs = config["epochs"]
 
-config=Config()
+        self.lr = config["lr"]
+
+        self.max_length = config["max_length"]
+
+        self.device = "cuda"
+
+config = Config()

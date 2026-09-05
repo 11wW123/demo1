@@ -1,4 +1,3 @@
-# torch.nn：PyTorch里面专门用来搭建神经网络的部分
 import torch.nn as nn
 
 from transformers import BertModel
